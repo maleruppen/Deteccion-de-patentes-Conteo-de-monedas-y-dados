@@ -34,21 +34,10 @@ if circles is not None:
 else:
     print("No se encontraron monedas con los parámetros actuales.")
 
-# Mostrar el resultado
-plt.figure(figsize=(10, 8))
-plt.imshow(cv2.cvtColor(img_with_circles, cv2.COLOR_BGR2RGB))
-plt.title(f'Detección con HoughCircles')
-plt.axis('off')
-plt.show()
 
 if circles is not None:
     circles = np.uint16(np.around(circles))
     radios = circles[0, :, 2]
-    #print(f"Se detectaron {len(radios)} monedas.")
-
-    # --- CLASIFICACIÓN POR TAMAÑO ---
-    # Ajustá estos valores según tu imagen (se calculan en píxeles)
-    # Podés imprimir np.sort(radios) para ver los valores detectados y afinar los límites.
     small_limit = 145   # límite superior para monedas pequeñas (10 cent)
     large_limit = 170  # límite superior para monedas medianas (1 peso)
 
@@ -68,10 +57,6 @@ if circles is not None:
         else:
             categorias["Grandes (50¢)"].append(i)
 
-    # --- RESULTADOS ---
-    print("\nClasificación de monedas por tamaño:")
-    for tipo, lista in categorias.items():
-         print(f"{tipo}: {len(lista)} monedas")
 
     # --- VISUALIZACIÓN CON COLORES POR CLASE ---
     colores = {
@@ -95,16 +80,15 @@ if circles is not None:
 else:
     print("No se detectaron monedas con los parámetros actuales.")
 
-# Umbral (170 es un buen valor)
+# Umbral 
 thresh_value = 170
 _, mask_dados = cv2.threshold(img, thresh_value, 255, cv2.THRESH_BINARY)
 
 # Buscar contornos
 contornos, _ = cv2.findContours(mask_dados, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
 img_color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-# ---- PARÁMETROS DE FILTRADO (AJUSTADOS) ----
+# ---- PARÁMETROS DE FILTRADO ----
 min_area_cara = 35000      # Un área mínima más segura que 500
 epsilon_perc = 0.04       # CAMBIO 1: 4% (más flexible que 0.02)
 min_aspect = 0.7          # CAMBIO 2: Rango más amplio
@@ -119,7 +103,6 @@ for cnt in contornos:
     # Filtro de área (para ruido)
     if area > min_area_cara:
         
-        # CAMBIO 1 (en la fórmula): Usar epsilon_perc
         approx = cv2.approxPolyDP(cnt, epsilon_perc * cv2.arcLength(cnt, True), True)
         num_vertices = len(approx)
         
@@ -128,13 +111,10 @@ for cnt in contornos:
         if h > 0: # Evitar división por cero
             aspect_ratio = float(w) / h
             
-        # Imprimimos info de CADA contorno interesante para depurar
-        #print(f"Contorno. Área: {area:.0f}, Vértices: {num_vertices}, Aspect: {aspect_ratio:.2f}")
 
-        # Si tiene 4 lados (es un cuadrilátero)
+        # Cuadrilatero
         if num_vertices == 4:
             
-            # CAMBIO 2 (en los límites): Usar el rango más flexible
             if min_aspect <= aspect_ratio <= max_aspect:
                 cv2.drawContours(img_color, [approx], 0, (0, 0, 255), 4)
                 dados_detectados += 1
@@ -144,37 +124,25 @@ for cnt in contornos:
             continue
 print(f"Cantidad de dados detectados: {dados_detectados}")
 
-# (Opcional) Habría que agregar el filtro de "contar una sola vez"
-# que teníamos antes, para que si un dado muestra 2 caras, solo cuente 1.
-# Pero este código debería *dibujar* las caras de ambos dados.
 
 plt.imshow(cv2.cvtColor(img_color, cv2.COLOR_BGR2RGB))
 plt.title("Detección con Filtros Flexibles")
 plt.show()
 
 
-## 馃幉 Conteo de Puntos en los Dados Detectados (Secci贸n Separada) 馃幉
-# ------------------------------------------------------------------
-
-# Reprocesamos la imagen original para buscar los puntos (c铆rculos oscuros)
-# Vamos a usar una imagen umbralizada inversa para aislar los puntos.
-# Si la imagen original no tiene ruido, puede usar 'img' o 'blur'.
-
+## Puntos por cada dado
 # Usamos la imagen gris original para crear un umbral que aisle los puntos oscuros.
-# (Umbral inferior, invertido)
+
 _, mask_puntos = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY_INV)
 blur_puntos = cv2.medianBlur(mask_puntos, 5) # Peque帽o desenfoque
 
-# Los contornos de los dados detectados (guardados en la iteraci贸n anterior) no est谩n disponibles
-# fuera del bucle 'for cnt in contornos:'.
-# Para este ejemplo 'extra', vamos a re-iterar sobre los contornos originales
-# y aplicar los filtros de detecci贸n de dados nuevamente, para luego contar los puntos.
+# re-iterar sobre los contornos originales
+# y aplicar los filtros de deteccion de dados nuevamente, para luego contar los puntos.
 
 img_puntos_contados = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 total_puntos_contados = 0
 dados_encontrados_info = [] # Lista para guardar los Bounding Boxes de los dados
 
-# ---- Re-filtrar los contornos para encontrar los dados ----
 # Reutilizamos las variables definidas arriba: contornos, min_area_cara, epsilon_perc, min_aspect, max_aspect
 
 for cnt in contornos:
@@ -190,18 +158,15 @@ for cnt in contornos:
         # Si cumple los filtros de DADO:
         if num_vertices == 4 and min_aspect <= aspect_ratio <= max_aspect:
             dados_encontrados_info.append((x, y, w, h))
-            
-# ---- Contar los puntos dentro de cada dado detectado ----
 
+# ---- Contar los puntos dentro de cada dado detectado ----
 
 for idx, (x, y, w, h) in enumerate(dados_encontrados_info):
     
-    # 1. Definir la Regi贸n de Inter茅s (ROI) para el dado
-    # Usamos la imagen preprocesada 'blur_puntos' para la detecci贸n
+    # definimos el ROI
     roi_puntos = blur_puntos[y:y+h, x:x+w]
     
-    # 2. Detecci贸n de c铆rculos (puntos) con HoughCircles en el ROI
-    # Ajustar par谩metros para c铆rculos peque帽os (puntos del dado)
+    # detectamos los circulos
     puntos_circles = cv2.HoughCircles(roi_puntos, cv2.HOUGH_GRADIENT, dp=1, minDist=10,
                                       param1=50, param2=15, 
                                       minRadius=5, maxRadius=30)
@@ -220,93 +185,13 @@ for idx, (x, y, w, h) in enumerate(dados_encontrados_info):
             
     # Dibujar contorno del dado para referencia
     cv2.rectangle(img_puntos_contados, (x, y), (x + w, y + h), (0, 0, 255), 3)
-
- 
-
+    # Escribir el número de puntos detectados en cada dado
+    texto = f"{num_puntos}"
+    posicion_texto = (x + 10, y + 50)
+    cv2.putText(img_puntos_contados, texto, posicion_texto, cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0), 3, cv2.LINE_AA)
 
 plt.figure(figsize=(10, 8))
 plt.imshow(cv2.cvtColor(img_puntos_contados, cv2.COLOR_BGR2RGB))
-plt.title(f"Detecci贸n de Puntos en Dados (Total: {total_puntos_contados})")
+plt.title(f"Deteccion de Puntos en Dados (Total: {total_puntos_contados})")
 plt.axis('off')
 plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
