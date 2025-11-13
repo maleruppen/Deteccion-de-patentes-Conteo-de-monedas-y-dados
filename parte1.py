@@ -195,3 +195,6 @@ plt.imshow(cv2.cvtColor(img_puntos_contados, cv2.COLOR_BGR2RGB))
 plt.title(f"Deteccion de Puntos en Dados (Total: {total_puntos_contados})")
 plt.axis('off')
 plt.show()
+
+
+
