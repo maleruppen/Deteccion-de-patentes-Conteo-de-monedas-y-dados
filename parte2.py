@@ -3,7 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # --- LÓGICA DE AGRUPACIÓN ---
-def filtrar_por_agrupacion(candidatos_rects):
+def filtrar_por_agrupacion(candidatos_rects) -> list: 
+
+    """ explicar """
+
     if not candidatos_rects: return []
     candidatos_ordenados = sorted(candidatos_rects, key=lambda r: r[0])
     grupos = []
@@ -20,7 +23,7 @@ def filtrar_por_agrupacion(candidatos_rects):
             distancia_x = x - (last_x + last_w)
             
             # Mismas reglas heurísticas
-            if diff_h < 0.4 and diff_y < 0.5 and -5 < distancia_x < (w * 2.5):
+            if diff_h < 0.6 and diff_y < 0.4 and -5 < distancia_x < (w * 2.3):
                 grupo.append(rect)
                 agregado = True
                 break
@@ -34,16 +37,18 @@ def filtrar_por_agrupacion(candidatos_rects):
     return mejor_grupo
 
 # --- FUNCIÓN DE RECORTE ---
-def obtener_recorte_patente(ruta_imagen):
+def obtener_recorte_patente(ruta_imagen) -> tuple:
     img_patente = cv2.imread(ruta_imagen, cv2.IMREAD_GRAYSCALE)
-    if img_patente is None: return np.zeros((50,150), dtype=np.uint8)
+    if img_patente is None: return np.zeros((50,150), dtype=np.uint8), "No encontrado", []
 
+    # Tratamiento de la imagen
     _, img_binary = cv2.threshold(img_patente, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     img_invertida = cv2.bitwise_not(img_binary)
     contornos, _ = cv2.findContours(img_invertida, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
     candidatos_crudos = []
     
+    # Seleccion de candidatos en base a sus medidas
     for c in contornos:
         x, y, w, h = cv2.boundingRect(c)
         if w > 0:
@@ -72,10 +77,14 @@ def obtener_recorte_patente(ruta_imagen):
         
         # Recortamos la imagen original
         recorte = img_patente[crop_y:crop_h, crop_x:crop_w]
-        return recorte, f"Detectado ({len(grupo)} chars)"
+
+        # Ajustamos las coordenadas del grupo al nuevo recorte
+        grupo_ajustado = [(x - crop_x, y - crop_y, w, h) for (x, y, w, h) in grupo]
+
+        return recorte, f"Detectado ({len(grupo)} chars)", grupo_ajustado
     else:
         # Si no detecta nada, devuelve imagen negra
-        return np.zeros((50, 150), dtype=np.uint8), "No Detectado"
+        return np.zeros((50, 150), dtype=np.uint8), "No Detectado", []
 
 # --- VISUALIZACIÓN ---
 rows = 3
@@ -83,74 +92,25 @@ cols = 4
 fig, axes = plt.subplots(rows, cols, figsize=(16, 6)) # Figura más ancha y baja para ver detalles
 axes = axes.flatten()
 
-print("Generando recortes de las patentes detectadas...")
+
+### Se genera la iteracion y visualizacion de las patentes
 
 for i in range(1, 13):
     nombre = f"img{i:02d}.png"
-    recorte, estado = obtener_recorte_patente(nombre)
+    recorte, estado, grupo = obtener_recorte_patente(nombre)
     
     ax = axes[i-1]
-    ax.imshow(recorte, cmap="gray")
+    
+    # Convertir a color para dibujar los bounding boxes
+    recorte_color = cv2.cvtColor(recorte, cv2.COLOR_GRAY2BGR)
+    
+    # Dibujar los bounding boxes de los caracteres si se encontraron
+    if grupo:
+        for (x, y, w, h) in grupo:
+            cv2.rectangle(recorte_color, (x, y), (x + w, y + h), (0, 255, 0), 1)
+    ax.imshow(cv2.cvtColor(recorte_color, cv2.COLOR_BGR2RGB))
     ax.set_title(f"{nombre}\n{estado}", fontsize=9)
     ax.axis('off')
 
 plt.tight_layout()
 plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
