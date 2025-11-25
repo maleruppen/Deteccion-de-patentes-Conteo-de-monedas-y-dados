@@ -1,7 +1,7 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import math
+
 
 # --- LÓGICA DE AGRUPACIÓN ---
 def filtrar_por_agrupacion(candidatos_rects) -> list: 
@@ -21,7 +21,7 @@ def filtrar_por_agrupacion(candidatos_rects) -> list:
             diff_y = abs(centro_y_actual - centro_y_last) / float(max(h, last_h))
             distancia_x = x - (last_x + last_w)
             
-            if diff_h < 0.6 and diff_y < 0.4 and -5 < distancia_x < (w * 2.3):
+            if diff_h < 0.5 and diff_y < 0.30 and -5 < distancia_x < (w * 2.5):
                 grupo.append(rect)
                 agregado = True
                 break
@@ -58,7 +58,7 @@ def procesar_patente_completo(ruta_imagen):
         x, y, w, h = cv2.boundingRect(c)
         aspect_ratio = float(h) / w
         area = w * h
-        if 0.8 <= aspect_ratio <= 5.0 and 30 < area < 5000:
+        if 1.5 <= aspect_ratio <= 3.0 and 30 < area < 500:
             candidatos_crudos.append((x, y, w, h))
             cv2.rectangle(img_candidatos, (x, y), (x+w, y+h),
                           (255, 0, 0), 2)
@@ -79,7 +79,7 @@ def procesar_patente_completo(ruta_imagen):
         crop_w = min(w_img, max_x + pad)
         crop_h = min(h_img, max_y + pad)
 
-        recorte = img_gray[crop_y:crop_h, crop_x:crop_w]  # GRIS REAL
+        recorte = img_gray[crop_y:crop_h, crop_x:crop_w]  
         recorte_color = cv2.cvtColor(recorte, cv2.COLOR_GRAY2BGR)
 
         grupo_ajustado = [(x - crop_x, y - crop_y, w, h)
@@ -162,46 +162,22 @@ plt.show()
 
 # --- FUNCIÓN DE SEGMENTACIÓN DE CARACTERES ---
 def segmentar_caracteres(recorte_gris, grupo_ajustado):
-    # Binarización robusta
-    recorte_bin = cv2.adaptiveThreshold(
-        recorte_gris, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        31, 10
-    )
+    
     grupo_ordenado = sorted(grupo_ajustado, key=lambda r: r[0])
     caracteres = []
+    
+    # Opcional: para visualizar cajas en debugging, usamos una copia
     img_marcados = cv2.cvtColor(recorte_gris, cv2.COLOR_GRAY2BGR)
 
     for (x, y, w, h) in grupo_ordenado:
-        char_crop = recorte_bin[y:y+h, x:x+w]
+        char_crop = recorte_gris[y:y+h, x:x+w] 
+        
         caracteres.append(char_crop)
 
+        # Dibujamos el rectángulo en la imagen de debug (opcional)
         cv2.rectangle(img_marcados, (x, y), (x+w, y+h), (0, 255, 0), 1)
 
-    return caracteres, img_marcados, recorte_bin
-
-
-
-# --- FIGURA 4 ---
-
-
-
-
-# --- MOSTRAR CARACTERES INDIVIDUALES (EJEMPLO) ---
-nombre, _, _, _, grupo_adj, recorte_gris, estado = datos_graficos[3]
-
-if estado.startswith("Detectado"):
-    caracteres, img_marcados, recorte_bin = segmentar_caracteres(recorte_gris, grupo_adj)
-
-    plt.figure(figsize=(12, 3))
-    for i, char in enumerate(caracteres):
-        plt.subplot(1, len(caracteres), i+1)
-        plt.imshow(char, cmap='gray')
-        plt.title(f"Char {i+1}")
-        plt.axis('off')
-    plt.show()
-
+    return caracteres, img_marcados, recorte_gris 
 
 
 # --- FIGURA ÚNICA: TODAS LAS PATENTES EN 3 COLUMNAS × 4 FILAS ---
@@ -227,7 +203,7 @@ for idx, ax in enumerate(axes):
     caracteres, img_marcados, recorte_bin = segmentar_caracteres(recorte_gris, grupo_adj)
 
     # ------- Unificar los caracteres en una imagen horizontal -------
-    espacios = 12  # espacio entre caracteres
+    espacios = 30  # espacio entre caracteres
 
     # Altura normalizada
     target_h = max([c.shape[0] for c in caracteres])
@@ -251,4 +227,118 @@ for idx, ax in enumerate(axes):
     ax.axis('off')
 
 plt.tight_layout()
+
 plt.show()
+
+# Buscamos específicamente la img06 en los datos procesados
+target_index = 5
+
+if target_index < len(datos_graficos):
+    # Desempaquetamos los datos guardados de la img06
+    nombre, img_bin, img_cand, _, grupo_adj, recorte_gris, estado = datos_graficos[target_index]
+    
+    img_original_full = cv2.imread(nombre, cv2.IMREAD_GRAYSCALE)
+
+    # Preparamos la tira de caracteres finales 
+    caracteres_06, _, _ = segmentar_caracteres(recorte_gris, grupo_adj)
+    
+    # -- Construcción de la imagen de caracteres finales --
+    if caracteres_06:
+        target_h = max([c.shape[0] for c in caracteres_06])
+        chars_resized = []
+        for c in caracteres_06:
+            h, w = c.shape
+            scale = target_h / h
+            nw = int(w * scale)
+            # Usamos INTER_AREA para que se vea nítido
+            resized = cv2.resize(c, (nw, target_h), interpolation=cv2.INTER_AREA)
+            chars_resized.append(resized)
+        
+        separador = 255 * np.ones((target_h, 15), dtype=np.uint8)
+        fila_final = chars_resized[0]
+        for c in chars_resized[1:]:
+            fila_final = np.hstack((fila_final, separador, c))
+    else:
+        fila_final = np.zeros((50, 200), dtype=np.uint8)
+
+    # --- PLOTEO DEL PIPELINE COMPLETO ---
+    fig, axes = plt.subplots(1, 4, figsize=(24, 6))
+    fig.suptitle(f"Pipeline de Procesamiento Detallado: {nombre}", fontsize=16)
+
+    # 1. Imagen Original (Escala de Grises)
+    axes[0].imshow(img_original_full, cmap='gray')
+    axes[0].set_title("1. Entrada (Grayscale)")
+    axes[0].axis('off')
+
+    # 2. Binarización (Lo que ve la computadora)
+    axes[1].imshow(img_bin, cmap='gray')
+    axes[1].set_title("2. Binarización (Threshold)")
+    axes[1].axis('off')
+
+    # 3. Contours Filtrados (Candidatos)
+    # Convertimos BGR a RGB para matplotlib
+    axes[2].imshow(cv2.cvtColor(img_cand, cv2.COLOR_BGR2RGB))
+    axes[2].set_title("3. Detección de Candidatos")
+    axes[2].axis('off')
+
+    # 4. Resultado Final (Caracteres Segmentados)
+    axes[3].imshow(fila_final, cmap='gray')
+    axes[3].set_title("4. Caracteres Extraídos")
+    axes[3].axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+else:
+    print(f"No se encontraron datos para el índice {target_index} (img06).")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

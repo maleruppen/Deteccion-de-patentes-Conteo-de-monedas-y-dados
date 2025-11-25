@@ -4,8 +4,15 @@ import matplotlib.pyplot as plt
 
 # ---  PREPROCESAMIENTO ---
 img = cv2.imread("monedas.jpg", cv2.IMREAD_GRAYSCALE)
+
+# Visualización img original
+plt.imshow(img,cmap="gray"),plt.title("Imagen original (Escala de gris)"),plt.show()
+
 # Para HoughCircles, un desenfoque de mediana suele ser muy bueno para preservar los bordes.
 blur = cv2.medianBlur(img, 9)
+
+# Visualización imagen blurreada
+plt.imshow(blur,cmap="gray"),plt.title("Imagen con Blur (Escala de gris)"),plt.show()
 
 # ---  DETECCIÓN DE CÍRCULOS CON HOUGH ---
 #   - dp: Relación inversa de resolución. Siempre 1.
